@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>weather</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
+      body {
+        font-family: "Outfit", sans-serif;
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css"
+      integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+  </head>
+  <body>
+    <div id="inputs">
+      <input
+        id="locationInput"
+        type="text"
+        placeholder="City, Zip Code, Coordinates"
+        value="New York City"
+      />
+
+      <select id="unitSelect">
+        <option value="imperial">Imperial (&deg;F, mi)</option>
+        <option value="metric">Metric (&deg;C, km)</option>
+      </select>
+
+      <button id="locationSubmit" onclick="runWeather()">&rightarrow;</button>
+    </div>
+
+    <div id="results">
+      <div id="currentResults">
+        <p id="rPlaceName"></p>
+        <p id="rCondition"></p>
+        <p id="rTempNow"></p>
+        <p id="rFeelsLike"></p>
+        <p id="rHighLow"></p>
+      </div>
+      <div id="alerts" style="display: none"></div>
+      <div id="hourly"></div>
+    </div>
+
+    <script>
+      const WEATHER_CODES_NIGHT = {
+        0: "Clear",
+        1: "Mostly Clear",
+        2: "Partly Cloudy",
+        3: "Cloudy",
+        45: "Fog",
+        48: "Rime Fog",
+        51: "Light Drizzle",
+        53: "Moderate Drizzle",
+        55: "Heavy Drizzle",
+        61: "Light Rain",
+        63: "Moderate Rain",
+        65: "Heavy Rain",
+        66: "Freezing Rain",
+        67: "Freezing Rain",
+        71: "Light Snow",
+        73: "Moderate Snow",
+        75: "Heavy Snow",
+        77: "Snow Grains",
+        80: "Light Rain Showers",
+        81: "Moderate Rain Showers",
+        82: "Heavy Rain Showers",
+        85: "Light Snow Showers",
+        86: "Heavy Snow Showers",
+        95: "Thunderstorm",
+        96: "Hail",
+        99: "Hail",
+      };
+      const WEATHER_CODES_DAY = {
+        0: "Sunny",
+        1: "Mostly Sunny",
+        2: "Partly Cloudy",
+        3: "Cloudy",
+        45: "Fog",
+        48: "Rime Fog",
+        51: "Light Drizzle",
+        53: "Moderate Drizzle",
+        55: "Heavy Drizzle",
+        61: "Light Rain",
+        63: "Moderate Rain",
+        65: "Heavy Rain",
+        66: "Freezing Rain",
+        67: "Freezing Rain",
+        71: "Light Snow",
+        73: "Moderate Snow",
+        75: "Heavy Snow",
+        77: "Snow Grains",
+        80: "Light Rain Showers",
+        81: "Moderate Rain Showers",
+        82: "Heavy Rain Showers",
+        85: "Light Snow Showers",
+        86: "Heavy Snow Showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm, Hail",
+        99: "Thunderstorm, Hail",
+      };
+
+      const BACKGROUNDS_NIGHT = {
+        0: "clear-night.jpg",
+        1: "clear-night.jpg",
+        2: "cloudy-night.jpg",
+        3: "cloudy-night.jpg",
+        45: "fog.jpg",
+        48: "fog.jpg",
+        51: "rainy.jpg",
+        53: "rainy.jpg",
+        55: "rainy.jpg",
+        61: "rainy.jpg",
+        63: "rainy.jpg",
+        65: "rainy.jpg",
+        66: "rainy.jpg",
+        67: "rainy.jpg",
+        71: "snow.jpg",
+        73: "snow.jpg",
+        75: "snow.jpg",
+        77: "snow.jpg",
+        80: "rainy.jpg",
+        81: "rainy.jpg",
+        82: "rainy.jpg",
+        85: "snow.jpg",
+        86: "snow.jpg",
+        95: "lightning.jpg",
+        96: "lightning.jpg",
+        99: "lightning.jpg",
+      };
+      const BACKGROUNDS_DAY = {
+        0: "sunny.jpg",
+        1: "sunny.jpg",
+        2: "cloudy.jpg",
+        3: "cloudy.jpg",
+        45: "fog.jpg",
+        48: "fog.jpg",
+        51: "rainy.jpg",
+        53: "rainy.jpg",
+        55: "rainy.jpg",
+        61: "rainy.jpg",
+        63: "rainy.jpg",
+        65: "rainy.jpg",
+        66: "rainy.jpg",
+        67: "rainy.jpg",
+        71: "snow.jpg",
+        73: "snow.jpg",
+        75: "snow.jpg",
+        77: "snow.jpg",
+        80: "rainy.jpg",
+        81: "rainy.jpg",
+        82: "rainy.jpg",
+        85: "snow.jpg",
+        86: "snow.jpg",
+        95: "lightning.jpg",
+        96: "lightning.jpg",
+        99: "lightning.jpg",
+      };
+
+      const cToF = (c) => (c * 9) / 5 + 32;
+
+      async function getWeather(location, units) {
+        const geoRes = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+            location
+          )}&count=1`
+        );
+        const geoData = await geoRes.json();
+
+        if (!geoData.results || geoData.results.length === 0) {
+          throw new Error("not a real place dawg");
+        }
+
+        const { latitude, longitude, name, admin1, country } =
+          geoData.results[0];
+
+        const tempUnit = units === "metric" ? "celsius" : "fahrenheit";
+
+        const weatherRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,precipitation&hourly=temperature_2m,weather_code,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=${tempUnit}&forecast_days=2&timezone=auto`
+        );
+
+        const weatherData = await weatherRes.json();
+
+        const current = weatherData.current.temperature_2m;
+        const feels = weatherData.current.apparent_temperature;
+        const code = weatherData.current.weather_code;
+        const precip = weatherData.current.precipitation;
+        const high = weatherData.daily.temperature_2m_max[0];
+        const low = weatherData.daily.temperature_2m_min[0];
+        const precipChance = weatherData.hourly.precipitation_probability[0];
+
+        const sunrise = new Date(weatherData.daily.sunrise[0]);
+        const sunset = new Date(weatherData.daily.sunset[0]);
+        const now = new Date(weatherData.current.time);
+
+        const isDay = now >= sunrise && now < sunset;
+
+        const background = isDay
+          ? BACKGROUNDS_DAY[code]
+          : BACKGROUNDS_NIGHT[code];
+
+        const hourlyTimes = weatherData.hourly.time;
+        const hourlyTemps = weatherData.hourly.temperature_2m;
+        const hourlyCodes = weatherData.hourly.weather_code;
+        const hourlyPop = weatherData.hourly.precipitation_probability;
+
+        const hourlyDates = hourlyTimes.map((t) => new Date(t));
+        const currentDate = new Date(weatherData.current.time);
+        let nowIdx = 0;
+        let smallestDiff = Infinity;
+
+        hourlyDates.forEach((d, i) => {
+          const diff = Math.abs(d - currentDate);
+          if (diff < smallestDiff) {
+            smallestDiff = diff;
+            nowIdx = i;
+          }
+        });
+
+        let hourlyArr = [];
+        for (let i = 0; i < 24; i++) {
+          const idx = nowIdx + i;
+          if (idx >= hourlyTimes.length) {
+            break;
+          }
+          const date = new Date(hourlyTimes[idx]);
+          const hourStr = date.toLocaleTimeString([], {
+            hour: "numeric",
+          });
+          hourlyArr.push({
+            time: hourStr,
+            temp: Math.round(hourlyTemps[idx]),
+            code: hourlyCodes[idx],
+            precipChance: hourlyPop[idx],
+          });
+        }
+
+        return {
+          locationName: `${name}, ${admin1}, ${country}`,
+          latitude,
+          longitude,
+          temperature: Math.round(current),
+          feelsLike: Math.round(feels),
+          high: Math.round(high),
+          low: Math.round(low),
+          condition: isDay
+            ? WEATHER_CODES_DAY[code]
+            : WEATHER_CODES_NIGHT[code] || "Unknown",
+          precip,
+          precipChance,
+          unitLabel: units === "metric" ? "°C" : "°F",
+          precipLabel: units === "metric" ? "mm/hr" : "in/hr",
+          units,
+          background,
+          alerts,
+          country,
+          hourly: hourlyArr,
+          codes: isDay ? WEATHER_CODES_DAY : WEATHER_CODES_NIGHT,
+        };
+      }
+
+      async function runWeather() {
+        document.getElementById("inputs").style.display = "none";
+        const loc = document.getElementById("locationInput").value.trim();
+        const units = document.getElementById("unitSelect").value;
+
+        try {
+          const data = await getWeather(loc, units);
+          const rPlaceName = document.getElementById("rPlaceName");
+          const rCondition = document.getElementById("rCondition");
+          const rTempNow = document.getElementById("rTempNow");
+          const rFeelsLike = document.getElementById("rFeelsLike");
+          const rHighLow = document.getElementById("rHighLow");
+          const alertsBox = document.getElementById("alerts");
+          const hourlyBox = document.getElementById("hourly");
+
+          rPlaceName.innerHTML = data.locationName;
+          rCondition.innerHTML = data.condition;
+          rTempNow.innerHTML = data.temperature + "&deg;";
+          rFeelsLike.innerHTML = "Feels like " + data.feelsLike + "&deg;";
+          rHighLow.innerHTML =
+            "High " + data.high + "&deg; &bull; Low " + data.low + "&deg;";
+
+          console.log(data.hourly);
+          for (let i = 0; i < data.hourly.length; i++) {
+            let hour = data.hourly[i];
+            let hourE = document.createElement("div");
+            hourE.className = "hour";
+            hourE.innerHTML = `<p class="hourTime">${hour.time}</p>
+          <p class="hourTemp">${hour.temp}&deg;</p>
+          <p class="hourCondition">${data.codes[hour.code]}</p>`;
+            hourlyBox.appendChild(hourE);
+          }
+
+          document.body.style.backgroundImage = `url('./backgrounds/${data.background}')`;
+
+          document.getElementById("results").style.display = "flex";
+          document.getElementById("results").style.justifyContent = "center";
+          document.body.style.alignItems = "flex-start";
+          document.title = "weather for " + data.locationName;
+
+          if (data.country == "United States") {
+            const alerts = await loadAlerts(data.latitude, data.longitude);
+            console.log(alerts);
+            if (alerts) {
+              for (i = 0; i < alerts.length; i++) {
+                let alertItem = document.createElement("div");
+                alertItem.innerHTML = `
+                <p class="alertType">${alerts[i].type} <i class="fa-solid fa-angle-down"></i></p>
+                <p class="alertDesc" style="display: none;">${alerts[i].description}</p>
+                <p class="alertArea" style="display: none;">Affected Areas: ${alerts[i].area}</p>`;
+                alertsBox.appendChild(alertItem);
+                alertsBox.style.display = "flex";
+
+                const typeEl = alertItem.querySelector(".alertType");
+                const descEl = alertItem.querySelector(".alertDesc");
+                const areaEl = alertItem.querySelector(".alertArea");
+                const icon = typeEl.querySelector("i");
+
+                typeEl.addEventListener("click", () => {
+                  const isHidden =
+                    descEl.style.display === "none" ||
+                    descEl.style.display === "";
+                  descEl.style.display = isHidden ? "block" : "none";
+                  areaEl.style.display = isHidden ? "block" : "none";
+                  if (icon) {
+                    icon.classList.toggle("fa-angle-down", !isHidden);
+                    icon.classList.toggle("fa-angle-up", isHidden);
+                  }
+                });
+              }
+            }
+          }
+        } catch (err) {
+          alert("whoops, an error: " + err.message);
+        }
+      }
+
+      async function loadAlerts(lat, long) {
+        const pointRes = await fetch(
+          `https://api.weather.gov/points/${lat},${long}`
+        );
+        const point = await pointRes.json();
+        const zone = point.properties.forecastZone.split("/").pop();
+        const alertsRes = await fetch(
+          `https://api.weather.gov/alerts/active?zone=${zone}`
+        );
+        const alertsJson = await alertsRes.json();
+        if (!alertsJson.features || alertsJson.features.length === 0)
+          return null;
+
+        return alertsJson.features.map((a) => {
+          const p = a.properties;
+
+          return {
+            type: p.event,
+            headline: p.headline,
+            description: p.description,
+            area: p.areaDesc,
+          };
+        });
+      }
+    </script>
+  </body>
+</html>

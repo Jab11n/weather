@@ -17,6 +17,7 @@
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   </head>
   <body>
     <div id="inputs">
@@ -45,9 +46,11 @@
       </div>
       <div id="alerts" style="display: none"></div>
       <div id="hourly"></div>
+      <div id="daily"></div>
     </div>
 
     <script>
+      // dont ask me why all my javascript is here and there is no file, i just felt like doing this
       const WEATHER_CODES_NIGHT = {
         0: "Clear",
         1: "Mostly Clear",
@@ -182,7 +185,7 @@
         const tempUnit = units === "metric" ? "celsius" : "fahrenheit";
 
         const weatherRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,precipitation&hourly=temperature_2m,weather_code,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=${tempUnit}&forecast_days=2&timezone=auto`
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,precipitation&hourly=temperature_2m,weather_code,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset&temperature_unit=${tempUnit}&forecast_days=8&timezone=auto`
         );
 
         const weatherData = await weatherRes.json();
@@ -241,6 +244,47 @@
           });
         }
 
+        const dailyTimes = weatherData.daily.time;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let todayIndex = 0;
+        for (let i = 0; i < dailyTimes.length; i++) {
+          const d = new Date(dailyTimes[i]);
+          d.setHours(0, 0, 0, 0);
+          if (d >= today) {
+            todayIndex = i;
+            break;
+          }
+        }
+
+        let dailyArr = [];
+
+        for (let i = todayIndex; i < todayIndex + 8; i++) {
+          if (i >= dailyTimes.length) break;
+
+          const date = new Date(dailyTimes[i]);
+          const dayName =
+            i === todayIndex
+              ? "Today"
+              : date.toLocaleDateString([], { weekday: "short" });
+
+          const code = weatherData.daily.weather_code[i];
+          const high = Math.round(weatherData.daily.temperature_2m_max[i]);
+          const low = Math.round(weatherData.daily.temperature_2m_min[i]);
+          const condition =
+            WEATHER_CODES_DAY[code] || WEATHER_CODES_NIGHT[code] || "Unknown";
+
+          dailyArr.push({
+            day: dayName,
+            condition,
+            high,
+            low,
+            code,
+          });
+        }
+
         return {
           locationName: `${name}, ${admin1}, ${country}`,
           latitude,
@@ -258,9 +302,9 @@
           precipLabel: units === "metric" ? "mm/hr" : "in/hr",
           units,
           background,
-          alerts,
           country,
           hourly: hourlyArr,
+          daily: dailyArr,
           codes: isDay ? WEATHER_CODES_DAY : WEATHER_CODES_NIGHT,
         };
       }
@@ -279,6 +323,7 @@
           const rHighLow = document.getElementById("rHighLow");
           const alertsBox = document.getElementById("alerts");
           const hourlyBox = document.getElementById("hourly");
+          const dailyBox = document.getElementById("daily");
 
           rPlaceName.innerHTML = data.locationName;
           rCondition.innerHTML = data.condition;
@@ -293,16 +338,35 @@
             let hourE = document.createElement("div");
             hourE.className = "hour";
             hourE.innerHTML = `<p class="hourTime">${hour.time}</p>
-          <p class="hourTemp">${hour.temp}&deg;</p>
-          <p class="hourCondition">${data.codes[hour.code]}</p>`;
+      <p class="hourTemp">${hour.temp}&deg;</p>
+      <p class="hourCondition">${data.codes[hour.code]}</p>`;
             hourlyBox.appendChild(hourE);
           }
 
-          document.body.style.backgroundImage = `url('./backgrounds/${data.background}')`;
+          for (let i = 0; i < data.daily.length; i++) {
+            const d = data.daily[i];
+
+            const dayE = document.createElement("div");
+            dayE.className = "day";
+
+            dayE.innerHTML = `
+          <p class="dDate">${d.day}</p>
+          <p class="dCondition">${d.condition}</p>
+          <p class="dTemps">${d.high}&deg; &bull; ${d.low}&deg;</p>
+        `;
+
+            dailyBox.appendChild(dayE);
+          }
+
+          document.body.style.setProperty(
+            "--bg-url",
+            `url('./backgrounds/${data.background}')`
+          );
 
           document.getElementById("results").style.display = "flex";
-          document.getElementById("results").style.justifyContent = "center";
-          document.body.style.alignItems = "flex-start";
+          document.getElementById("results").style.justifyContent =
+            "flex-start";
+          document.body.style.alignItems = "center";
           document.title = "weather for " + data.locationName;
 
           if (data.country == "United States") {
@@ -312,9 +376,17 @@
               for (i = 0; i < alerts.length; i++) {
                 let alertItem = document.createElement("div");
                 alertItem.innerHTML = `
-                <p class="alertType">${alerts[i].type} <i class="fa-solid fa-angle-down"></i></p>
-                <p class="alertDesc" style="display: none;">${alerts[i].description}</p>
-                <p class="alertArea" style="display: none;">Affected Areas: ${alerts[i].area}</p>`;
+            <p class="alertType">${
+              alerts[i].type
+            } <i class="fa-solid fa-angle-down"></i></p>
+            <p class="alertDesc" style="display: none;">${alerts[
+              i
+            ].description.replaceAll("\n* ", "<br>* ")}</p>
+            <p class="alertArea" style="display: none;">Affected Areas: ${
+              alerts[i].area
+            } &bull; <a href="https://forecast.weather.gov/MapClick.php?lat=${
+                  data.latitude
+                }&lon=${data.longitude}">NWS</a></p>`;
                 alertsBox.appendChild(alertItem);
                 alertsBox.style.display = "flex";
 
